@@ -13,7 +13,7 @@ from selenium.common.exceptions import (NoSuchElementException,
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
-
+from .flyers import get_flyers
 from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
