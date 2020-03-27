@@ -1,5 +1,3 @@
-include RELEASE-VERSION
-include version.py
 include setup.py
 include versioneer.py
-include grocery_helpers/_version.pyinclude src/grocery_helpers/_version.py
+include src/grocery_helpers/_version.py
