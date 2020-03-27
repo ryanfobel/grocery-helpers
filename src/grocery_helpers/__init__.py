@@ -14,6 +14,11 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
 
+from ._version import get_versions
+__version__ = get_versions()['version']
+del get_versions
+
+
 class Timeout(Exception):
     pass
 
@@ -330,7 +335,7 @@ class GroceryHelpersAPI:
     
     @setup_and_teardown_driver
     def add_product_to_database(self, link):
-        products_path = os.path.join(self._data_directory, 'products.csv')
+        products_path = os.path.join(self._data_directory, 'products', 'products.csv')
 
         if os.path.exists(products_path):
             df_products = pd.read_csv(products_path, index_col=0)
@@ -396,7 +401,7 @@ class GroceryHelpersAPI:
         df_products.to_csv(products_path)
 
     def get_product_list(self):
-        products_path = os.path.join(self._data_directory, 'products.csv')
+        products_path = os.path.join(self._data_directory, 'products', 'products.csv')
         if os.path.exists(products_path):
             return pd.read_csv(products_path, index_col=0)
         else:
