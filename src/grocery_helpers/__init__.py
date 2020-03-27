@@ -183,7 +183,8 @@ class GroceryHelpersAPI:
     @setup_and_teardown_driver
     def add_product_to_current_order(self, link, quantity=1, timeout=10):
         self._driver.get(link)
-
+        self._driver.execute_script("window.scrollTo(0, 0);")
+        
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
