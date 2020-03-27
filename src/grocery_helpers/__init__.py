@@ -409,11 +409,34 @@ class GroceryHelpersAPI:
             return pd.DataFrame()
     
     def _login(self):
-        self._driver.get(self._base_url)
-        self._driver.find_element_by_id("accessCode").send_keys(self._user)
-        self._driver.find_element_by_id ("password").send_keys(self._password)
-        self._driver.find_element_by_xpath('//*[@id="login-form"]/div[3]/button').click()
+        if not self.signed_in():
+            self._driver.find_element_by_id("accessCode").send_keys(self._user)
+            self._driver.find_element_by_id ("password").send_keys(self._password)
+            self._driver.find_element_by_xpath('//*[@id="login-form"]/div[3]/button').click()
+        
+    def signed_in(self):
+        url = self._driver.current_url
+        
+        # If we're not on the base url or the pcid login page, go to the base
+        # url.
+        if url.find(self._base_url):
+            self._driver.get(self._base_url)        
 
+        while True:
+            # If the sign in button exists, the user is not logged in.
+            try:
+                self._driver.find_element_by_class_name('sign-in')
+                return False
+            except NoSuchElementException:
+                pass
+
+            # If the acccounts button exists, the user is logged in.
+            try:
+                self._driver.find_element_by_class_name('account__toggle__button')
+                return True
+            except NoSuchElementException:
+                pass
+        
 
 class RealCanadianSuperstoreAPI(GroceryHelpersAPI):
     def __init__(self, user=None, password=None, user_data_dir=None,
