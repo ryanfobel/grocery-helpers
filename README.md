@@ -9,3 +9,6 @@
 * [ ] https://www.instacart.ca/
 * [ ] https://www.grocerygateway.com/
 * [ ] https://www.metro.ca/
+* [ ] https://www.zerocery.ca/
+* [ ] https://fullcirclefoods.ca/
+* [ ] https://www.zerowastebulk.com
