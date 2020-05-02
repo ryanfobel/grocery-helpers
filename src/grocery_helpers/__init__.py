@@ -402,6 +402,151 @@ class GroceryHelpersAPI:
         df_products = df_products.append(pd.DataFrame(data, index=[sku]))
         df_products.to_csv(products_path)
 
+    @setup_and_teardown_driver
+    def get_pickup_locations(self, postal_code, timeout=10):
+        self._driver.get(self._base_url + '/store-locator')
+
+        """
+        First character of the postal code	Province, territory or region	First character of the postal code	Province, territory or region
+        Note: The regions used in this table are defined by Canada Post Corporation.
+
+        Source: Statistics Canada, 2006 Census of Population.
+
+        A	Newfoundland and Labrador	M	Metropolitan Toronto
+        B	Nova Scotia	                N	Southwestern Ontario
+        C	Prince Edward Island	    P	Northern Ontario
+        E	New Brunswick	            R	Manitoba
+        G	Eastern Québec	            S	Saskatchewan
+        H	Metropolitan Montréal	    T	Alberta
+        J	Western Québec	            V	British Columbia
+        K	Eastern Ontario	            X	Northwest Territories and Nunavut
+        L	Central Ontario	            Y	Yukon Territory
+        """
+
+        if postal_code[0] in ['K', 'L', 'M', 'N', 'P']:
+            region = 'Ontario'
+
+        buttons = [button for button in self._driver.find_elements_by_class_name('primary-button--region-selector') if button.text == region]
+        if len(buttons):
+            buttons[0].click()
+        
+        def set_postal_code(postal_code):
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    postal_code_box = self._driver.find_element_by_class_name("location-search__search__input")
+                    postal_code_box.click()
+                    ActionChains(self._driver) \
+                        .key_down(Keys.CONTROL) \
+                        .send_keys('a') \
+                        .key_up(Keys.CONTROL) \
+                        .perform()
+                    postal_code_box.send_keys(postal_code)
+                    postal_code_box.send_keys(Keys.ENTER)
+                    break
+                except NoSuchElementException:
+                    pass
+
+        set_postal_code(postal_code)
+        
+        rows = []
+        while len(rows) == 0:
+            rows = self._driver.find_elements_by_class_name('location-list-item-details')
+        data = [row.text.split('\n')[:2] for row in rows]
+
+        # transpose the 2d list
+        data = list(zip(*data))
+
+        # get the distance to each store
+        distances = []
+        while len(distances) == 0:
+            distances = [x.text for x in self._driver.find_elements_by_class_name('location-list-item-type__type__distance')]
+        data.append(distances)
+
+        df = pd.DataFrame(dict(zip(['name', 'address', 'distance'], data)))
+        return df
+
+    @setup_and_teardown_driver
+    def get_pickup_slots(self, postal_code, location=None, timeout=10):
+
+        def select_location(postal_code, location):
+            df_locations = self.get_pickup_locations(postal_code)
+
+            if location is None:
+                i = 0
+            elif location in df_locations['name'].values:
+                # Go to the store with the matching name
+                i = int(df_locations[df_locations['name'] == location].index.values[0])
+            else:
+                raise KeyError('%s not in %s' % (location,
+                    df_locations['name'].values.tolist()))
+
+            locations = []
+            while len(locations) == 0:
+                locations = self._driver.find_elements_by_class_name('location-list__item')
+
+            css_selected = "button[data-track='storeLocatorShopNowResetButton']"
+            css_unselected = "button[data-track='storeLocatorShopNowButton']"
+
+            buttons = [loc.find_element_by_css_selector(css_unselected)
+                    if len(loc.find_elements_by_css_selector(css_unselected))
+                    else None for loc in locations]
+
+            if buttons[i]:
+                buttons[i].click()
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    try:
+                        self._driver.find_element_by_class_name('store-locator-redirect__button').click()
+                        break
+                    except NoSuchElementException:
+                        pass
+
+        select_location(postal_code, location)
+        
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                # Click the "select a timeslot" button
+                self._driver.find_element_by_css_selector("button[data-auid='timeslot-button']").click()
+                break
+            except NoSuchElementException:
+                pass
+        
+        def get_pickup_table_for_current_page():
+            times = []
+            while len(times) == 0:
+                times = [t.text for t in self._driver.find_elements_by_class_name('timeslot-selector-timelist__time__text')]
+            data = self._driver.find_elements_by_class_name('timeslot-selector-daylist__day')
+            days = [', '.join(day.text.split('\n')[:2]) for day in data if len(day.text)]
+            time_slots = [day.text.split('\n')[2:] for day in data if len(day.text)]
+
+            return pd.DataFrame(dict(zip(days, time_slots)), index=times)
+
+        df = get_pickup_table_for_current_page()
+
+        while True:
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    button = self._driver.find_element_by_class_name('slick-next')
+                    button.click()
+                    break
+                except NoSuchElementException:
+                    pass
+
+            time.sleep(2)
+            df_page = get_pickup_table_for_current_page()
+
+            if df_page.columns[-1] in df.columns.values:
+                break
+            
+            for col in df_page.columns:
+                if col not in df.columns.values:
+                    df[col] = df_page[col]
+
+        return df
+
     def get_product_list(self):
         products_path = os.path.join(self._data_directory, 'products', 'products.csv')
         if os.path.exists(products_path):
@@ -569,3 +714,93 @@ class WalmartAPI(GroceryHelpersAPI):
         input_box.send_keys(5)
 
         self._driver.find_element_by_xpath("//button[contains(text(), 'Add to cart')]").click()
+
+    @setup_and_teardown_driver
+    def get_pickup_locations(self, postal_code):
+        self._driver.get(self._base_url + '/en/scheduled-shopping')
+
+        def set_postal_code(postal_code):
+            #<input type="text" placeholder="Enter a city or postal code to find a pickup location near you." aria-label="Enter a city or postal code to find a pickup location near you." class="css-1kgtn0i eesbt950" value="N1R1A3">
+            postal_code_box = self._driver.find_element_by_css_selector("input[placeHolder='Enter a city or postal code to find a pickup location near you.']")
+            postal_code_box.click()
+            ActionChains(self._driver) \
+                .key_down(Keys.CONTROL) \
+                .send_keys('a') \
+                .key_up(Keys.CONTROL) \
+                .perform()
+            postal_code_box.send_keys(postal_code)
+
+            #<input aria-label="Find" type="submit" class="css-hrxt9j e1tmjuvc2" value="Find">
+            self._driver.find_element_by_css_selector("input[type='submit']").click()
+        
+        set_postal_code(postal_code)
+        
+        time.sleep(2)
+        
+        divs = []
+        while len(divs) == 0:
+            divs = self._driver.find_elements_by_css_selector("div[data-automation='pickup-location']")
+        data = [div.text.split('\n')[:4] for div in divs]
+
+        # transpose the 2d list
+        data = list(zip(*data))
+
+        df = pd.DataFrame(dict(zip(['index', 'distance', 'name', 'address'], data)))
+        return df.set_index('index')
+
+    @setup_and_teardown_driver
+    def get_pickup_slots(self, postal_code, location=None, timeout=10):
+
+        def select_location(postal_code, location):
+            df_locations = self.get_pickup_locations(postal_code)
+
+            if location is None:
+                i = 0
+            elif location in df_locations['name'].values:
+                # Go to the store with the matching name
+                i = int(df_locations[df_locations['name'] == location].index.values[0]) - 1
+            else:
+                raise KeyError('%s not in %s' % (location,
+                    df_locations['name'].values.tolist()))
+
+            buttons = self._driver.find_elements_by_css_selector("button[data-automation='location-link']")
+            self._driver.execute_script('arguments[0].scrollIntoView(true);', buttons[i])
+
+            # Click on the selected store
+            buttons[i].click()
+        
+        select_location(postal_code, location)
+
+        def get_pickup_table_for_current_page():
+            time.sleep(1)
+
+            table = self._driver.find_element_by_css_selector("table[aria-label='Select a time slot']")
+            rows = table.find_elements_by_tag_name("tr")
+
+            data = [[td.text for td in row.find_elements_by_tag_name("td")] for row in rows[1:]]
+
+            # Transpose the 2d list
+            data = list(zip(*data))
+
+            dates = [th.text for th in rows[0].find_elements_by_tag_name("th")][1:]
+            times = [row.find_element_by_tag_name("th").text for row in rows[1:]]
+            return pd.DataFrame(dict(zip(dates, data)), index=times)
+            
+        df = get_pickup_table_for_current_page()
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                button = self._driver.find_element_by_id("next-slots")
+                if button.get_attribute('disabled'):
+                    break
+                else:
+                    button.click()
+                    df_page = get_pickup_table_for_current_page()
+                    for col in df_page.columns:
+                        if col not in df.columns.values:
+                            df[col] = df_page[col]
+            except NoSuchElementException:
+                pass
+            
+        return df
