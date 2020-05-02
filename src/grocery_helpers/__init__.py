@@ -73,6 +73,7 @@ class GroceryHelpersAPI:
             options.add_argument('headless')
 
         self._driver = webdriver.Chrome(options=options)
+        self._driver.maximize_window()
 
     def close_driver(self):
         if self._driver:
@@ -88,7 +89,7 @@ class GroceryHelpersAPI:
         items = []
         while len(items) == 0 and time.time() - start_time < 10:
             items = self._driver.find_elements_by_class_name(
-                'product-tile-group__item')
+                'product-tile-group__list__item')
             product_data = [json.loads(item.find_element_by_class_name(
                 'product-tracking').get_attribute('data-track-products-array'))
                             for item in items]
