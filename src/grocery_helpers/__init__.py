@@ -150,9 +150,12 @@ class GroceryHelpersAPI:
             link = self._driver.current_url
         start_time = time.time()
 
+        sku = link.split('/')[-1]
+        
         while time.time() - start_time < timeout:
             try:
-                div = self._driver.find_element_by_class_name('product-tracking')
+                div = [x for x in self._driver.find_elements_by_class_name('product-tracking')
+                       if x.get_attribute('data-track-product-id') == sku][0]
             except NoSuchElementException:
                 pass
             
@@ -355,7 +358,7 @@ class GroceryHelpersAPI:
 
         product_info = self.get_product_info(link)
 
-        output_path = os.path.join(self._data_directory, product_info['productSKU'])
+        output_path = os.path.join(self._data_directory, 'products', product_info['productSKU'])
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
